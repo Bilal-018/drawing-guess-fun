@@ -8,7 +8,11 @@ interface Point {
   y: number;
 }
 
-export default function Canvas() {
+interface CanvasProps {
+  canDraw?: boolean;
+}
+
+export default function Canvas({ canDraw = true }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState("#ffffff");
@@ -16,7 +20,6 @@ export default function Canvas() {
 
   const socket = getSocket();
 
-  // Draw a line on the canvas
   const drawLine = (
     start: Point,
     end: Point,
@@ -44,24 +47,17 @@ export default function Canvas() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Set canvas size
     const resize = () => {
       const parent = canvas.parentElement;
       if (parent) {
         canvas.width = parent.clientWidth;
-        canvas.height = 500;
+        canvas.height = 480;
       }
     };
     resize();
     window.addEventListener("resize", resize);
 
-    // Listen for drawings from other players
-    const handleDraw = (data: {
-      start: Point;
-      end: Point;
-      color: string;
-      size: number;
-    }) => {
+    const handleDraw = (data: any) => {
       drawLine(data.start, data.end, data.color, data.size, ctx);
     };
 
@@ -79,11 +75,9 @@ export default function Canvas() {
     };
   }, [socket]);
 
-  // Get position relative to canvas
   const getPoint = (e: React.MouseEvent | React.TouchEvent): Point | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
-
     const rect = canvas.getBoundingClientRect();
 
     if ("touches" in e) {
@@ -92,7 +86,6 @@ export default function Canvas() {
         y: e.touches[0].clientY - rect.top,
       };
     }
-
     return {
       x: (e as React.MouseEvent).clientX - rect.left,
       y: (e as React.MouseEvent).clientY - rect.top,
@@ -100,27 +93,23 @@ export default function Canvas() {
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!canDraw) return;
     e.preventDefault();
     setIsDrawing(true);
     const point = getPoint(e);
-    if (point) {
-      (canvasRef.current as any).lastPoint = point;
-    }
+    if (point) (canvasRef.current as any).lastPoint = point;
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
+    if (!isDrawing || !canDraw) return;
     e.preventDefault();
 
     const currentPoint = getPoint(e);
     const lastPoint = (canvasRef.current as any).lastPoint;
-
     if (!currentPoint || !lastPoint) return;
 
-    // Draw locally
     drawLine(lastPoint, currentPoint, color, brushSize);
 
-    // Send to other players
     socket.emit("draw", {
       start: lastPoint,
       end: currentPoint,
@@ -131,11 +120,10 @@ export default function Canvas() {
     (canvasRef.current as any).lastPoint = currentPoint;
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-  };
+  const stopDrawing = () => setIsDrawing(false);
 
   const clearCanvas = () => {
+    if (!canDraw) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (ctx && canvas) {
@@ -146,44 +134,43 @@ export default function Canvas() {
 
   return (
     <div className="w-full">
-      {/* Toolbar */}
-      <div className="flex items-center gap-4 mb-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-400">Color:</span>
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="w-8 h-8 rounded cursor-pointer bg-transparent"
-          />
+      {canDraw && (
+        <div className="flex items-center gap-4 mb-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-zinc-400">Color:</span>
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="w-8 h-8 rounded cursor-pointer bg-transparent"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-zinc-400">Size:</span>
+            <input
+              type="range"
+              min="1"
+              max="30"
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+              className="w-24"
+            />
+          </div>
+          <button
+            onClick={clearCanvas}
+            className="px-4 py-1.5 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700"
+          >
+            Clear
+          </button>
         </div>
+      )}
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-400">Size:</span>
-          <input
-            type="range"
-            min="1"
-            max="30"
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            className="w-24"
-          />
-          <span className="text-sm w-6">{brushSize}</span>
-        </div>
-
-        <button
-          onClick={clearCanvas}
-          className="px-4 py-1.5 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 transition"
-        >
-          Clear
-        </button>
-      </div>
-
-      {/* Canvas */}
       <div className="bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden">
         <canvas
           ref={canvasRef}
-          className="w-full touch-none cursor-crosshair bg-zinc-950"
+          className={`w-full touch-none bg-zinc-950 ${
+            canDraw ? "cursor-crosshair" : "cursor-not-allowed"
+          }`}
           onMouseDown={startDrawing}
           onMouseMove={draw}
           onMouseUp={stopDrawing}
